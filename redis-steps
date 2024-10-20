@@ -1,0 +1,78 @@
+Dockerfile
+
+FROM redis:7.0
+COPY redis.conf /usr/local/etc/redis/redis.conf
+EXPOSE 6379
+CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]
+-----------------------
+redis.config
+
+bind 0.0.0.0
+port 6379  
+cluster-enabled no
+appendonly yes
+-----------------------
+create venv
+
+python3 -m venv venv
+source venv/bin/activate
+
+install flask
+
+app to test performance
+---------------------------
+from flask import Flask, jsonify
+import redis
+import time
+
+app = Flask(__name__)
+
+# Connect to Redis
+cache = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
+
+# Simulated slow task
+def slow_task():
+    time.sleep(2)  # Simulate slow operation (e.g., fetching from DB or API)
+    return "Task completed"
+
+# Route without caching
+@app.route('/no-cache')
+def no_cache():
+    result = slow_task()
+    return jsonify({'result': result, 'source': 'No cache'})
+
+# Route with Redis caching
+@app.route('/with-cache')
+def with_cache():
+    cache_key = 'slow_task_result'
+    result = cache.get(cache_key)
+
+    if not result:
+        result = slow_task()  # Perform slow task
+        cache.set(cache_key, result, ex=60)  # Cache result with 60 seconds expiration
+        return jsonify({'result': result, 'source': 'Redis Cache (fresh)'})
+    
+    return jsonify({'result': result, 'source': 'Redis Cache (cached)'})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+------------------------------------
+curl http://127.0.0.1:5000/no-cache
+
+curl http://1270.0.0.1:5000/with-cache
+------------------------------------
+performance test
+
+time_namelookup:  %{time_namelookup}\n
+time_connect:  %{time_connect}\n
+time_starttransfer:  %{time_starttransfer}\n
+-------------------------\n
+time_total:  %{time_total}\n
+
+curl -w "@curl-format.txt" -o /dev/null -s http://127.0.0.1:5000/no-cache
+
+curl -w "@curl-format.txt" -o /dev/null -s http://127.0.0.1:5000/with-cache
+------------------------------------------
+load test
+
+using postman
